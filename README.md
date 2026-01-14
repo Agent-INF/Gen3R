@@ -1,6 +1,6 @@
 <div align="center">
 <h1>
-<span style="color:#F3E969">G</span><span style="color:#D6E67B">e</span><span style="color:#93D89A">n</span><span style="color:#69D5C9">3</span><span style="color:#55B5CA">R</span>: 3D Scene Generation Meets Feed-Forward Reconstruction
+Gen3R: 3D Scene Generation Meets Feed-Forward Reconstruction
 </h1>
 
 [Jiaxin Huang](https://jaceyhuang.github.io/), [Yuanbo Yang](https://github.com/freemty), [Bangbang Yang](https://ybbbbt.com/), [Lin Ma](https://scholar.google.com/citations?user=S4HGIIUAAAAJ&hl=en),  [Yuewen Ma](https://scholar.google.com/citations?user=VG_cdLAAAAAJ), [Yiyi Liao](https://yiyiliao.github.io/)
@@ -16,7 +16,7 @@
 </p>
 
 <p align="left">
-<strong>TL;DR</strong>: Gen3R create multi-quantity geometry with RGB from images via a unified latent space that aligns geometry and appearance.
+<strong>TL;DR</strong>: Gen3R creates multi-quantity geometry with RGB from images via a unified latent space that aligns geometry and appearance.
 </p>
 
 </div>
