@@ -109,13 +109,143 @@ python infer.py \
 ```
 </details>
 
-<!-- ## 🚗 Training
-By default, we train our models using 24 H20 GPUs (96 GB VRAM each). However, the models can also be trained on other GPU configurations by appropriately adjusting the batch size. Check out the script [`train.sh`](train.sh) for details. -->
+## 🚗 Training
+
+Gen3R training consists of two stages as described in the [paper](https://arxiv.org/abs/2601.04090):
+
+### Training Overview
+
+**Stage 1: Train Geometry Adapter**
+- Train an adapter to map VGGT tokens to a latent space aligned with the Wan VAE's appearance latent space
+- Optimizes reconstruction loss (L_rec) and distribution alignment loss (L_KL)
+- Initial training with 25 frames, fine-tuning with 49 frames
+
+**Stage 2: Fine-tune Video Diffusion Model**
+- Fine-tune the video diffusion model to jointly generate appearance and geometry latent codes
+- Operates on concatenated latent space Z = [A; G]
+- Supports multiple conditioning tasks (1-view, 2-view, all-view)
+
+### Dataset Preparation
+
+Prepare your dataset in the following structure:
+```
+data/
+├── train/
+│   ├── scene_001/
+│   │   ├── frames/           # Video frames (PNG/JPG)
+│   │   │   ├── 0000.png
+│   │   │   ├── 0001.png
+│   │   │   └── ...
+│   │   ├── cameras.json      # Camera parameters
+│   │   ├── depth/            # (Optional) Depth maps
+│   │   └── prompt.txt        # Text description
+│   ├── scene_002/
+│   └── ...
+└── val/
+    └── ...
+```
+
+The `cameras.json` should contain:
+```json
+{
+    "extrinsics": [[4x4 matrix], ...],
+    "intrinsics": [[3x3 matrix], ...]
+}
+```
+
+Supported datasets (as per the paper):
+- RealEstate10K
+- DL3DV-10K
+- Co3Dv2
+- WildRGB-D
+- TartanAir
+
+### Quick Start
+
+Run the full training pipeline:
+```bash
+# Set environment variables
+export DATA_ROOT=/path/to/your/data
+export CHECKPOINTS_DIR=./checkpoints
+export OUTPUT_DIR=./outputs
+
+# Run training
+bash train.sh
+```
+
+### Stage 1: Train Geometry Adapter
+
+```bash
+python train_adapter.py \
+    --data_root /path/to/data \
+    --vggt_path ./checkpoints/vggt \
+    --wan_vae_path ./checkpoints/wan_vae \
+    --output_dir ./outputs/geometry_adapter \
+    --num_epochs 100 \
+    --batch_size 1 \
+    --learning_rate 1e-4 \
+    --num_frames 25 \
+    --resolution 560 \
+    --lambda_rec 1.0 \
+    --lambda_kl 0.001 \
+    --mixed_precision bf16
+```
+
+Key arguments:
+- `--num_frames`: Number of frames per sequence (use 25 for initial training, 49 for fine-tuning)
+- `--lambda_rec`: Weight for reconstruction loss (default: 1.0)
+- `--lambda_kl`: Weight for KL divergence loss (default: 0.001)
+
+### Stage 2: Fine-tune Diffusion Model
+
+```bash
+python train_diffusion.py \
+    --data_root /path/to/data \
+    --pretrained_path ./checkpoints \
+    --output_dir ./outputs/diffusion \
+    --num_epochs 50 \
+    --batch_size 1 \
+    --learning_rate 1e-5 \
+    --num_frames 49 \
+    --resolution 560 \
+    --text_dropout_prob 0.1 \
+    --camera_dropout_prob 0.1 \
+    --task_1view_prob 0.4 \
+    --task_2view_prob 0.3 \
+    --task_allview_prob 0.3 \
+    --mixed_precision bf16
+```
+
+Key arguments:
+- `--text_dropout_prob`: Probability of dropping text conditioning (for classifier-free guidance)
+- `--camera_dropout_prob`: Probability of dropping camera conditioning
+- `--task_*_prob`: Sampling probabilities for different tasks (1-view, 2-view, all-view)
+
+### Hardware Requirements
+
+By default, we train our models using 24 H20 GPUs (96 GB VRAM each). However, the models can also be trained on other GPU configurations by appropriately adjusting the batch size:
+
+- **Recommended**: 8x H100 (80GB) or equivalent
+- **Minimum**: 1x GPU with 40GB+ VRAM (with reduced batch size)
+
+### Using Trained Models
+
+After training, use your trained model for inference:
+```bash
+python infer.py \
+    --pretrained_model_name_or_path ./outputs/diffusion/final_pipeline \
+    --task 2view \
+    --prompts "A beautiful scene" \
+    --frame_path image1.png image2.png \
+    --cameras free \
+    --output_dir ./results
+```
 
 ## ✅ TODO
 - [x] Release inference code and checkpoints
+- [x] Release training code
 - [ ] Release online demo
-- [ ] Release training code & dataset preparation
+- [ ] Release dataset preparation scripts
 
 ## 🎓 Citation
 Please cite our paper if you find this repository useful:
