@@ -2,7 +2,7 @@
 """
 Training script for Gen3R Video Diffusion Model (Stage 2).
 
-This script fine-tunes the video diffusion model (Wan2.1) to jointly generate
+This script fine-tunes the video diffusion model (Wan 2.1) to jointly generate
 appearance and geometry latent codes in a unified latent space.
 
 Usage:
@@ -27,7 +27,7 @@ from datetime import datetime
 import torch
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from gen3r.training import (
     DiffusionTrainer,

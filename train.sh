@@ -68,14 +68,28 @@ python train_adapter.py \
 
 # Fine-tuning with 49 frames (longer sequences)
 echo "Stage 1b: Fine-tuning with 49 frames..."
-LATEST_CHECKPOINT=$(find "${STAGE1_OUTPUT}/initial" -name "final_checkpoint.pt" | head -1)
+LATEST_CHECKPOINT=$(find "${STAGE1_OUTPUT}/initial" -name "final_checkpoint.pt" 2>/dev/null | head -1)
+
+# Check if checkpoint exists
+if [ -z "$LATEST_CHECKPOINT" ]; then
+    echo "Warning: No checkpoint found from Stage 1a, looking for most recent checkpoint..."
+    LATEST_CHECKPOINT=$(find "${STAGE1_OUTPUT}/initial" -name "checkpoint-*.pt" 2>/dev/null | sort -V | tail -1)
+fi
+
+if [ -z "$LATEST_CHECKPOINT" ]; then
+    echo "Warning: No checkpoint found, starting Stage 1b from scratch"
+    CHECKPOINT_ARG=""
+else
+    echo "Using checkpoint: $LATEST_CHECKPOINT"
+    CHECKPOINT_ARG="--checkpoint_path $LATEST_CHECKPOINT"
+fi
 
 python train_adapter.py \
     --data_root "$DATA_ROOT" \
     --vggt_path "$VGGT_PATH" \
     --wan_vae_path "$WAN_VAE_PATH" \
     --output_dir "${STAGE1_OUTPUT}/finetune" \
-    --checkpoint_path "$LATEST_CHECKPOINT" \
+    $CHECKPOINT_ARG \
     --num_epochs 20 \
     --batch_size 1 \
     --learning_rate 5e-5 \
@@ -103,10 +117,13 @@ STAGE2_OUTPUT="${OUTPUT_DIR}/stage2_diffusion"
 mkdir -p "$STAGE2_OUTPUT"
 
 # Copy trained geometry adapter to checkpoints
-TRAINED_ADAPTER=$(find "${STAGE1_OUTPUT}/finetune" -name "geo_adapter-*" -type d | sort | tail -1)
-if [ -n "$TRAINED_ADAPTER" ]; then
+TRAINED_ADAPTER=$(find "${STAGE1_OUTPUT}/finetune" -name "geo_adapter-*" -type d 2>/dev/null | sort | tail -1)
+if [ -n "$TRAINED_ADAPTER" ] && [ -d "$TRAINED_ADAPTER" ]; then
+    mkdir -p "${CHECKPOINTS_DIR}/geo_adapter/"
     cp -r "$TRAINED_ADAPTER"/* "${CHECKPOINTS_DIR}/geo_adapter/"
-    echo "Updated geometry adapter in checkpoints"
+    echo "Updated geometry adapter in checkpoints from: $TRAINED_ADAPTER"
+else
+    echo "Warning: No trained geometry adapter found, using existing checkpoint"
 fi
 
 echo "Training diffusion model..."

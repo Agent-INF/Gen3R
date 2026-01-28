@@ -82,23 +82,35 @@ class MultiViewDataset(Dataset):
         
         if not os.path.exists(split_dir):
             return samples
+        
+        try:
+            scene_names = sorted(os.listdir(split_dir))
+        except (PermissionError, OSError) as e:
+            import logging
+            logging.warning(f"Could not list directory {split_dir}: {e}")
+            return samples
             
-        for scene_name in sorted(os.listdir(split_dir)):
+        for scene_name in scene_names:
             scene_path = os.path.join(split_dir, scene_name)
-            if not os.path.isdir(scene_path):
-                continue
+            try:
+                if not os.path.isdir(scene_path):
+                    continue
+                    
+                # Check for required files
+                frames_dir = os.path.join(scene_path, "frames")
+                cameras_file = os.path.join(scene_path, "cameras.json")
                 
-            # Check for required files
-            frames_dir = os.path.join(scene_path, "frames")
-            cameras_file = os.path.join(scene_path, "cameras.json")
-            
-            if os.path.exists(frames_dir) and os.path.exists(cameras_file):
-                samples.append({
-                    "scene_name": scene_name,
-                    "scene_path": scene_path,
-                    "frames_dir": frames_dir,
-                    "cameras_file": cameras_file,
-                })
+                if os.path.exists(frames_dir) and os.path.exists(cameras_file):
+                    samples.append({
+                        "scene_name": scene_name,
+                        "scene_path": scene_path,
+                        "frames_dir": frames_dir,
+                        "cameras_file": cameras_file,
+                    })
+            except (PermissionError, OSError) as e:
+                import logging
+                logging.warning(f"Could not access scene {scene_name}: {e}")
+                continue
                 
         return samples
     
@@ -125,10 +137,28 @@ class MultiViewDataset(Dataset):
         
         # Load camera parameters
         if os.path.exists(cameras_file):
-            with open(cameras_file, 'r') as f:
-                cameras = json.load(f)
-            extrinsics = torch.tensor(cameras.get("extrinsics", []))
-            intrinsics = torch.tensor(cameras.get("intrinsics", []))
+            try:
+                with open(cameras_file, 'r') as f:
+                    cameras = json.load(f)
+                
+                # Validate camera data structure
+                extrinsics_data = cameras.get("extrinsics", [])
+                intrinsics_data = cameras.get("intrinsics", [])
+                
+                if isinstance(extrinsics_data, list) and len(extrinsics_data) > 0:
+                    extrinsics = torch.tensor(extrinsics_data, dtype=torch.float32)
+                else:
+                    extrinsics = torch.eye(4).unsqueeze(0).repeat(self.num_frames, 1, 1)
+                    
+                if isinstance(intrinsics_data, list) and len(intrinsics_data) > 0:
+                    intrinsics = torch.tensor(intrinsics_data, dtype=torch.float32)
+                else:
+                    intrinsics = self._get_default_intrinsics()
+            except (json.JSONDecodeError, TypeError, ValueError) as e:
+                import logging
+                logging.warning(f"Could not parse cameras.json for {scene_path}: {e}")
+                extrinsics = torch.eye(4).unsqueeze(0).repeat(self.num_frames, 1, 1)
+                intrinsics = self._get_default_intrinsics()
         else:
             # Create default camera parameters
             extrinsics = torch.eye(4).unsqueeze(0).repeat(self.num_frames, 1, 1)
@@ -181,6 +211,7 @@ class MultiViewDataset(Dataset):
     def _load_frames(self, frames_dir: str, num_available: int) -> torch.Tensor:
         """Load video frames from directory."""
         import imageio
+        import logging
         
         frames = []
         if os.path.exists(frames_dir):
@@ -191,12 +222,18 @@ class MultiViewDataset(Dataset):
             
             for frame_file in frame_files[:num_available]:
                 frame_path = os.path.join(frames_dir, frame_file)
-                frame = imageio.v2.imread(frame_path)
-                frame = torch.from_numpy(frame).float() / 255.0  # [H, W, C]
-                if frame.dim() == 2:
-                    frame = frame.unsqueeze(-1).repeat(1, 1, 3)
-                frame = frame.permute(2, 0, 1)  # [C, H, W]
-                frames.append(frame)
+                try:
+                    frame = imageio.v2.imread(frame_path)
+                    frame = torch.from_numpy(frame).float() / 255.0  # [H, W, C]
+                    if frame.dim() == 2:
+                        frame = frame.unsqueeze(-1).repeat(1, 1, 3)
+                    if frame.shape[-1] > 3:
+                        frame = frame[..., :3]  # Take only RGB channels
+                    frame = frame.permute(2, 0, 1)  # [C, H, W]
+                    frames.append(frame)
+                except Exception as e:
+                    logging.warning(f"Could not load frame {frame_path}: {e}")
+                    continue
         
         if len(frames) == 0:
             # Return dummy frames if no frames found

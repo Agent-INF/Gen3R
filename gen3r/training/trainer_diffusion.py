@@ -403,12 +403,13 @@ class DiffusionTrainer:
         noisy_latents = self.add_noise(joint_latent, noise, timesteps)
         
         # Camera conditioning (plucker embeddings)
-        if "extrinsics" in batch and "intrinsics" in batch and not drop_camera:
+        if not drop_camera and "extrinsics" in batch and "intrinsics" in batch:
             camera_latents = self._compute_camera_latents(batch)
         else:
-            # Zero camera conditioning
+            # Zero camera conditioning - match spatial dimensions from latent space
+            _, _, lat_t, lat_h, lat_w = noisy_latents.shape
             camera_latents = torch.zeros(
-                B, 24, noisy_latents.shape[2], images.shape[-2], images.shape[-1] * 2,
+                B, 24, lat_t, self.config.resolution, self.config.resolution * 2,
                 device=self.device, dtype=noisy_latents.dtype
             )
         
@@ -485,11 +486,11 @@ class DiffusionTrainer:
         
         num_frames = plucker_embeddings.shape[1]
         plucker_embeddings = plucker_embeddings.view(
-            B, (num_frames) // 4, 4, 6, H, W
+            B, num_frames // 4, 4, 6, H, W
         ).transpose(2, 3)  # [B, f, 6, 4, H, W]
         
         plucker_embeddings = plucker_embeddings.view(
-            B, (num_frames) // 4, 24, H, W
+            B, num_frames // 4, 24, H, W
         ).transpose(1, 2)  # [B, 24, f, H, W]
         
         # Duplicate for joint latent space
@@ -500,8 +501,13 @@ class DiffusionTrainer:
     def _compute_seq_len(self, latents: torch.Tensor) -> int:
         """Compute sequence length for transformer."""
         _, c, t, h, w = latents.shape
-        patch_size = self.transformer.config.patch_size
-        return math.ceil((h * w) / (patch_size[1] * patch_size[2]) * t)
+        # Handle different transformer configs
+        if hasattr(self.transformer.config, 'patch_size'):
+            patch_size = self.transformer.config.patch_size
+            if isinstance(patch_size, (list, tuple)) and len(patch_size) >= 3:
+                return math.ceil((h * w) / (patch_size[1] * patch_size[2]) * t)
+        # Default fallback
+        return math.ceil(h * w * t)
     
     def save_checkpoint(self, path: Optional[str] = None) -> None:
         """Save training checkpoint."""
