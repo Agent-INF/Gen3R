@@ -1,0 +1,3 @@
+[submodule "univideo"]
+	path = univideo
+	url = https://github.com/Agent-INF/UniVideo.git
